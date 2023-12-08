@@ -32,17 +32,8 @@ def get_weather_data(city):
 
     print(data)
 
-    meteo = {
-        'location': city,
-        'temperature': data['main']['temp'],
-        'temperature_ressentie': data['main']['feels_like'],
-        'humidite': data['main']['humidity'],
-        'vent': data['wind']['speed'],
-        'qualite_air': random.uniform(0, 100),
-    }
-
     # conversion des données sous format JSON.
-    log_entry = json.dumps(meteo)
+    log_entry = json.dumps(data)
     return log_entry
 
 
