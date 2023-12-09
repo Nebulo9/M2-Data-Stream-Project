@@ -1,13 +1,19 @@
 import sys
-from pyspark.sql import SparkSession
+from pyspark.sql import SparkSession, DataFrame
 import pyspark.sql.functions as F
-from pyspark.sql.types import StructType, StructField, StringType, IntegerType, FloatType
+from pyspark.sql.types import StructType, StructField, StringType, IntegerType, FloatType, TimestampType
 from pyspark.sql.functions import col, when
-import os
+import os, sqlite3
+from .notif import send_notification
 
 
 os.environ['PYSPARK_SUBMIT_ARGS'] = '--packages org.apache.spark:spark-streaming-kafka-0-10_2.12:3.5.0,org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 pyspark-shell'
 
+def send(lieu,risque,nature):
+    if "aucun risque" in risque:
+        return
+    else:
+        send_notification(f"Risque de {nature} à {lieu}", f"Risque {risque} de {nature} à {lieu}")
 
 if __name__ == "__main__":
     if len(sys.argv) != 4:
@@ -52,12 +58,19 @@ if __name__ == "__main__":
         StructField("vent", FloatType(), True),
         StructField("description", StringType(), True),
         StructField("qualite_air", FloatType(), True),
-        StructField("timestamp", StringType(), True),
+        StructField("timestamp", TimestampType(), True),
     ])
 
-    stream_data = lines.select(
+    stream_data:DataFrame = lines.select(
         F.from_json(lines.value, schema).alias("data")
     ).select("data.*")
+
+    # Tri par timestamp
+    # stream_data = stream_data\
+    #     .groupBy("location")\
+    #     .agg(F.max("timestamp").alias("timestamp"))\
+    #     .orderBy("timestamp", ascending=False)
+
 
     # Pluie :
     #     Risque de pluie faible : 1-30%
@@ -95,16 +108,18 @@ if __name__ == "__main__":
                                     when((col('temperature') <= 0) & (col('temperature') > -2), "léger")
                                     .when((col('temperature') <= -2) & (col('temperature') > -5), "modéré")
                                     .when((col('temperature') <= -5), "sévère")
-                                    .otherwise("aucun risque"))
+                                    .otherwise("aucun risque"))\
+        .groupBy("location")\
+        .agg(F.max("timestamp").alias("timestamp"),F.max("risque_gel").alias("risque_gel"))\
 
-    result_gel = result_gel.select("location", "temperature", "risque_gel")
 
     query = result_gel\
         .writeStream\
-        .outputMode('append')\
+        .outputMode('complete')\
         .format('console')\
         .queryName("result_table") \
         .trigger(processingTime="1 second")\
+        .foreach(lambda row: send(row.location,row.risque_gel,"gel"))\
         .start()
     
     query.awaitTermination()
