@@ -27,3 +27,5 @@ types-python-dateutil
 tzdata
 urllib3
 webencodings
+win10toast
+pypiwin32
