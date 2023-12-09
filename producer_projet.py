@@ -3,6 +3,7 @@ import random
 import requests
 import time
 import uuid
+import datetime
 from kafka import KafkaProducer
 
 # faire : pip install requests
@@ -30,10 +31,24 @@ def get_weather_data(city):
     response = requests.get(base_url, params=params)
     data = response.json()
 
-    print(data)
+    meteo = {
+        'location': city,
+        'temperature': data['main']['temp'],
+        'temperature_ressentie': data['main']['feels_like'],
+        'temperature_min': data['main']['temp_min'],
+        'temperature_max': data['main']['temp_max'],
+        'pression': data['main']['pressure'],
+        'humidite': data['main']['humidity'],
+        'vent': data['wind']['speed'],
+        'description': data['weather'][0]['description'],
+        'qualite_air': random.uniform(0, 100),
+        'timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+
+    print(meteo)
 
     # conversion des données sous format JSON.
-    log_entry = json.dumps(data)
+    log_entry = json.dumps(meteo)
     return log_entry
 
 
@@ -45,7 +60,7 @@ while True:
         meteo_data = get_weather_data(city)
 
         # Envoyer les données au topic Kafka
-        producer.send('TD5_users', key=str(uuid.uuid4()).encode('utf-8'), value=meteo_data.encode('utf-8'))
+        producer.send('projet_1', key=str(uuid.uuid4()).encode('utf-8'), value=meteo_data.encode('utf-8'))
         producer.flush()
 
     time.sleep(5)  # Récupérez les données toutes les 5 secondes
