@@ -4,10 +4,32 @@ import pyspark.sql.functions as F
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType, FloatType
 from pyspark.sql.functions import from_json, col, when
 import os
-
+import sqlite3
 
 os.environ['PYSPARK_SUBMIT_ARGS'] = '--packages org.apache.spark:spark-streaming-kafka-0-10_2.12:3.5.0,org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 pyspark-shell'
 
+DB_FILE = "./database.db"
+
+def exec_query(query:str,many=False,params=None):
+    try:
+        connection = sqlite3.connect(DB_FILE)
+        cursor = connection.cursor()
+        if many:
+            if params:
+                cursor.executemany(query,params)
+            else:
+                raise Exception("Missing params")
+        else:
+            if params:
+                cursor.execute(query,params)
+            else:
+                cursor.execute(query)
+        connection.commit()
+        connection.close()
+        return True
+    except Exception as e:
+        print(e)
+        return False
 
 if __name__ == "__main__":
     if len(sys.argv) != 4:
