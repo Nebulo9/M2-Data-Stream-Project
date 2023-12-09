@@ -77,9 +77,6 @@ if __name__ == "__main__":
     }
 
     # Pluie :
-    #     Risque de pluie faible : 1-30%
-    #     Risque de pluie modéré : 31-60%
-    #     Risque de pluie élevé : 61-100%
 
     result_pluie = stream_data.withColumn("risque_pluie", 
                                     when((col('main.humidity') >= 70) & (col('weather.description').like("%cloud%")), "oui")
