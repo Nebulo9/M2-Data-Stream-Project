@@ -18,10 +18,20 @@ def send_notification(row:dict[str,str]):
             root = tk.Tk()
             root.title("Risque de "+nature)
             message = f"{timestamp}\nRisque {risque} de {nature} à\n{lieu}"
-            label = tk.Label(root, text=message,padx=50,pady=50,font=("Arial", 26))
+            label = tk.Label(root, text=message,padx=50,pady=50)
             label.pack()
+            # Set a fixed position for the popup window
+            window_width = root.winfo_reqwidth()
+            window_height = root.winfo_reqheight()
+            screen_width = root.winfo_screenwidth()
+            screen_height = root.winfo_screenheight()
+
+            x_position = screen_width // 2 - window_width*2
+            y_position = screen_height // 2 - window_height
+            
+            root.geometry(f"+{x_position}+{y_position}")
             seconds = 10
-            root.after(seconds*1000,root.destroy())
+            root.after(seconds*1000,lambda: root.destroy())
             root.mainloop()
 
 if __name__ == "__main__":
@@ -93,32 +103,32 @@ if __name__ == "__main__":
 
 
     result = stream_data\
-                        .withColumn("risque_pluie", when((col('humidite') >= 70) & (col('description').like('%cloud%')), "probable")
-                                    .when((col('description').like('%rain%')), "probable")
-                                    .otherwise("aucun")) \
-                        .withColumn("risque_chaleur", when((col('temperature') >= 27) & (col('temperature') < 32), "modéré")
-                                    .when((col('temperature') >= 33) & (col('temperature') < 39), "élevé")
-                                    .when((col('temperature') >= 40), "extrême") \
-                                    .otherwise("aucun")) \
-                        .withColumn("risque_gel", when((col('temperature') <= 0) & (col('temperature') > -2), "léger")
-                                    .when((col('temperature') <= -2) & (col('temperature') > -5), "modéré")
-                                    .when((col('temperature') <= -5), "sévère")
-                                    .otherwise("aucun")) \
-                        .withColumn("risque_rafale", when((col('vent') >= 30) & (col('vent') < 50 ), "modéré")
-                                    .when((col('vent') >= 50) & (col('vent') < 80), "fort")
-                                    .when((col('vent') >= 80), "très fort")
-                                    .otherwise("aucun")) \
-                        .withColumn("risque_humidite", when((col('humidite') < 40), "bas")
-                                    .when((col('humidite') >= 40) & (col('humidite') < 70), "modéré")
-                                    .otherwise("élevé")) \
-                        .groupBy("location") \
-                        .agg(
-                            F.max("timestamp").alias("timestamp"),
-                            F.max("risque_pluie").alias("risque_pluie"),
-                            F.max("risque_chaleur").alias("risque_chaleur"),
-                            F.max("risque_gel").alias("risque_gel"),
-                            F.max("risque_rafale").alias("risque_rafale"),
-                            F.max("risque_humidite").alias("risque_humidite")
+                .withColumn("risque_pluie", when((col('humidite') >= 70) & (col('description').like('%cloud%')), "probable")
+                            .when((col('description').like('%rain%')), "probable")
+                            .otherwise("aucun")) \
+                .withColumn("risque_chaleur", when((col('temperature') >= 27) & (col('temperature') < 32), "modéré")
+                            .when((col('temperature') >= 33) & (col('temperature') < 39), "élevé")
+                            .when((col('temperature') >= 40), "extrême") \
+                            .otherwise("aucun")) \
+                .withColumn("risque_gel", when((col('temperature') <= 0) & (col('temperature') > -2), "léger")
+                            .when((col('temperature') <= -2) & (col('temperature') > -5), "modéré")
+                            .when((col('temperature') <= -5), "sévère")
+                            .otherwise("aucun")) \
+                .withColumn("risque_rafale", when((col('vent') >= 30) & (col('vent') < 50 ), "modéré")
+                            .when((col('vent') >= 50) & (col('vent') < 80), "fort")
+                            .when((col('vent') >= 80), "très fort")
+                            .otherwise("aucun")) \
+                .withColumn("risque_humidite", when((col('humidite') < 40), "bas")
+                            .when((col('humidite') >= 40) & (col('humidite') < 70), "modéré")
+                            .otherwise("élevé")) \
+                .groupBy("location") \
+                .agg(
+                    F.max("timestamp").alias("timestamp"),
+                    F.max("risque_pluie").alias("risque_pluie"),
+                    F.max("risque_chaleur").alias("risque_chaleur"),
+                    F.max("risque_gel").alias("risque_gel"),
+                    F.max("risque_rafale").alias("risque_rafale"),
+                    F.max("risque_humidite").alias("risque_humidite")
                         )\
 
     query = result \
