@@ -11,19 +11,12 @@ os.environ['PYSPARK_SUBMIT_ARGS'] = '--packages org.apache.spark:spark-streaming
 
 def send(row:dict[str,str]):
     lieu = row['loaction']
-    risques = {
-        "pluie":row['risque_pluie'],
-        "chaleur":row['risque_chaleur'],
-        "gel":row['risque_gel'],
-        "rafale":row['risque_rafale'],
-        "humidite":row['risque_humidite'],
-    }
+    risques = {k.strip("risque_"):v for k,v in row.items() if k != 'location'}
     for nature,risque in risques.items():
         if any(r in risque for r in ["aucun","bas"]):
             continue
         else:
-            nat = nature.strip("risque_")
-            send_notification(f"Risque de {nat} à {lieu}", f"Risque {risque} de {nat} à {lieu}",threaded=True)
+            send_notification(f"Risque de {nature} à {lieu}", f"Risque {risque} de {nature} à {lieu}",threaded=True)
 
 if __name__ == "__main__":
     if len(sys.argv) != 4:
