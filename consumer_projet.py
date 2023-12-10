@@ -53,6 +53,8 @@ if __name__ == "__main__":
         StructField("description", StringType(), True),
         StructField("qualite_air", FloatType(), True),
         StructField("timestamp", StringType(), True),
+        StructField("pluie_3h", FloatType(), True),
+        StructField("pluie_1h", FloatType(), True),
     ])
 
     stream_data = lines.select(

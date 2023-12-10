@@ -9,8 +9,7 @@ from kafka import KafkaProducer
 
 # faire : pip install requests
 
-
-#start=2023-12-07&end=2023-12-09&token=X5kufRU4yq1dJ5WUmF0PvmYqKfuidLbSJ5rSPfapbqYbZKIn9ALXGw
+# (datetime.datetime.now()- datetime.timedelta(hours=2,minutes=10)).strftime("%Y-%m-%d-%H:%M")
 # Configuration du producteur Kafka
 producer = KafkaProducer (
     bootstrap_servers = ['proud-termite-7506-eu2-kafka.upstash.io:9092'],
@@ -21,9 +20,10 @@ producer = KafkaProducer (
 )
 
 # Fonction pour obtenir les données météorologiques depuis l'API infoclimat
-def get_weather_data(city,start =datetime.datetime.now().strftime("%Y-%m-%d") ,end = datetime.datetime.now().strftime("%Y-%m-%d")):
+def get_weather_data(city,start =(datetime.datetime.now()- datetime.timedelta(hours=2)).strftime("%Y-%m-%d-%H") ,end = datetime.datetime.now().strftime("%Y-%m-%d")):
 
     base_url = 'https://www.infoclimat.fr/opendata/?method=get&format=json&'
+    print(start)
     if type(city) == type(list) :
         for elt in city:
             base_url += "stations[]="+elt+"&"
@@ -48,54 +48,49 @@ def get_weather_data(city,start =datetime.datetime.now().strftime("%Y-%m-%d") ,e
     id_to_station = {station["id"]: station["name"] for station in data["stations"]}
 
     # Accéder à la liste "hourly" dans votre objet JSON
+    del data["hourly"]["_params"]
     hourly_list = data["hourly"]
-
     # Parcourir la liste "hourly" et mettre à jour les valeurs de "id_station" avec les noms correspondants
     for entry in hourly_list:
         station_id = entry
         for elt in hourly_list[entry] :
             # Vérifier si l'ID de la station existe dans le dictionnaire de correspondance
             if station_id in id_to_station:
+                try :
+                    elt["pluie_3h"] = float(elt["pluie_3h"])
+                    elt["pluie_1h"] = float(elt["pluie_1h"])
+                except TypeError :
+                    elt["pluie_3h"] = 0
+                    elt["pluie_1h"] = 0
+
+                del elt["point_de_rosee"]
+                del elt["vent_direction"]
                 elt["id_station"] = id_to_station[station_id]
                 elt["location"] = elt.pop("id_station")
-                elt["temperature_ressentie"] = None
+                elt["temperature"] = float(elt["temperature"])
+                elt["pression"] = float(elt["pression"])
                 elt["temperature_min"] = None
                 elt["temperature_max"] = None
-                elt["vent"] = elt.pop("vent_moyen")
+                elt["vent"] = float(elt.pop("vent_moyen"))
                 elt["qualite_air"] = random.uniform(0, 100)
                 elt["timestamp"] = elt.pop("dh_utc")
+                if float(elt["temperature"]) < 10 and  float(elt["vent"]) > 4.8:
+                    elt["temperature_ressentie"] =f"{round(13.12 + 0.6215*float(elt['temperature']) + (0.3965 * float(elt['temperature']) -11.37) * float(elt['vent'])**0.16,1)}"
+                elif float(elt["temperature"]) < 10 and  float(elt["vent"]) < 4.8:
+                    elt["temperature_ressentie"] = f"{round(float(elt['temperature']) + (0.1345 * float(elt['temperature']) -1.59) * float(elt['vent']),1)}"
+                else :
+                    elt["temperature_ressentie"] = elt["temperature"]
+    return data["hourly"]
 
-    print(data["hourly"]["00061"][1])
+data = get_weather_data(["00061","00081"])
 
-    # for elt in data["hourly"]:
-    #     meteo = {
-    #         'location': city,
-    #         'temperature': data['main']['temp'],
-    #         'temperature_ressentie': data['main']['feels_like'],
-    #         'temperature_min': data['main']['temp_min'],
-    #         'temperature_max': data['main']['temp_max'],
-    #         'pression': data['main']['pressure'],
-    #         'humidite': data['main']['humidity'],
-    #         'vent': data['wind']['speed'],
-    #         'description': data['weather'][0]['description'],
-    #         'qualite_air': random.uniform(0, 100),
-    #         'timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    #     }
-    # conversion des données sous format JSON.
-    # log_entry = json.dumps(meteo)
-    # return log_entry
+# print(data)
+for elt in data :
+    for msg in data[elt] :
+        # Envoyer les données au topic Kafka
+        print(msg)
+        producer.send('projet_1', key=str(uuid.uuid4()).encode('utf-8'), value=json.dumps(msg).encode('utf-8'))
+        producer.flush()
 
-
-get_weather_data(["00061","00081"])
-
-    # print(meteo)
-
-
-# print(int(datetime.datetime.now().strftime("%d"))-1)
-# while True:
-
-    # Envoyer les données au topic Kafka
-    # producer.send('projet_1', key=str(uuid.uuid4()).encode('utf-8'), value=meteo_data.encode('utf-8'))
-    # producer.flush()
-
-    # time.sleep(5)  # Récupérez les données toutes les 5 secondes
+print(data["00061"][0])
+print(len(data["00061"][0]))
