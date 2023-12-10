@@ -3,17 +3,27 @@ from pyspark.sql import SparkSession, DataFrame
 import pyspark.sql.functions as F
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType, FloatType, TimestampType
 from pyspark.sql.functions import col, when
-import os, sqlite3
-from .notif import send_notification
+import os
+from notif import send_notification
 
 
 os.environ['PYSPARK_SUBMIT_ARGS'] = '--packages org.apache.spark:spark-streaming-kafka-0-10_2.12:3.5.0,org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 pyspark-shell'
 
-def send(lieu,risque,nature):
-    if "aucun risque" in risque:
-        return
-    else:
-        send_notification(f"Risque de {nature} à {lieu}", f"Risque {risque} de {nature} à {lieu}")
+def send(row:dict[str,str]):
+    lieu = row['loaction']
+    risques = {
+        "pluie":row['risque_pluie'],
+        "chaleur":row['risque_chaleur'],
+        "gel":row['risque_gel'],
+        "rafale":row['risque_rafale'],
+        "humidite":row['risque_humidite'],
+    }
+    for nature,risque in risques.items():
+        if any(r in risque for r in ["aucun","bas"]):
+            continue
+        else:
+            nat = nature.strip("risque_")
+            send_notification(f"Risque de {nature} à {lieu}", f"Risque {risque} de {nature} à {lieu}",threaded=True)
 
 if __name__ == "__main__":
     if len(sys.argv) != 4:
@@ -64,88 +74,65 @@ if __name__ == "__main__":
     stream_data:DataFrame = lines.select(
         F.from_json(lines.value, schema).alias("data")
     ).select("data.*")
-
-    # Tri par timestamp
-    # stream_data = stream_data\
-    #     .groupBy("location")\
-    #     .agg(F.max("timestamp").alias("timestamp"))\
-    #     .orderBy("timestamp", ascending=False)
-
-
-    # Pluie :
-    #     Risque de pluie faible : 1-30%
-    #     Risque de pluie modéré : 31-60%
-    #     Risque de pluie élevé : 61-100%
-
-    result_pluie = stream_data.withColumn("risque_pluie", 
-                                    when((col('humidite') >= 70) & (col('description').like('%cloud%')), "oui")
-                                    .when((col('description').like('%rain%')), "oui")
-                                    .otherwise("aucun risque"))
-
-    result_pluie = result_pluie.select("location", "temperature", "risque_pluie")   
-
-
-
+    
+    
     # Chaleur élevée :
     #     Risque de chaleur modérée: 27-32°C
     #     Risque de chaleur élevée: 33-39°C
     #     Risque de chaleur extrême: 40°C et plus
-
-    result_chaleur = stream_data.withColumn("risque_chaleur", 
-                                    when((col('temperature') >= 27) & (col('temperature') < 32), "modérée")
-                                    .when((col('temperature') >= 33) & (col('temperature') < 39), "élevée")
-                                    .when((col('temperature') >= 40), "extrême")
-                                    .otherwise("aucun risque"))
-
-    result_chaleur = result_chaleur.select("location", "temperature", "risque_chaleur")
 
     # Gel :
     #     Risque de gel léger : Température entre 0°C et -2°C
     #     Risque de gel modéré : Température entre -2°C et -5°C
     #     Risque de gel sévère : Température en dessous de -5°C
 
-    result_gel = stream_data.withColumn("risque_gel", 
-                                    when((col('temperature') <= 0) & (col('temperature') > -2), "léger")
-                                    .when((col('temperature') <= -2) & (col('temperature') > -5), "modéré")
-                                    .when((col('temperature') <= -5), "sévère")
-                                    .otherwise("aucun risque"))\
-        .groupBy("location")\
-        .agg(F.max("timestamp").alias("timestamp"),F.max("risque_gel").alias("risque_gel"))\
-
-
-    query = result_gel\
-        .writeStream\
-        .outputMode('complete')\
-        .format('console')\
-        .queryName("result_table") \
-        .trigger(processingTime="1 second")\
-        .foreach(lambda row: send(row.location,row.risque_gel,"gel"))\
-        .start()
-    
-    query.awaitTermination()
-
     # Rafales de vent :
     #     Rafales modérées : 30-50 km/h
     #     Rafales fortes : 51-80 km/h
     #     Rafales très fortes : 81 km/h et plus
-
-    result_rafale = stream_data.withColumn("risque_rafale", 
-                                    when((col('vent') >= 30) & (col('vent') < 50 ), "modérées")
-                                    .when((col('vent') >= 50) & (col('vent') < 80), "fortes")
-                                    .when((col('vent') >= 80), "très fortes")
-                                    .otherwise("aucun risque"))
-
-    result_rafale = result_rafale.select("location", "vent", "risque_rafale")
 
     # Humidité :
     #     Humidité relative élevée : Supérieure à 70%
     #     Humidité relative modérée : Entre 40% et 70%
     #     Humidité relative basse : Inférieure à 40%
 
-    result_humidite = stream_data.withColumn("risque_humidite", 
-                                    when((col('humidite') < 40), "basse")
-                                    .when((col('humidite') >= 40) & (col('humidite') < 70), "modérée")
-                                    .otherwise("élevée"))
 
-    result_humidite = result_humidite.select("location", "humidite", "risque_humidite")
+    result = stream_data\
+                        .withColumn("risque_pluie", when((col('humidite') >= 70) & (col('description').like('%cloud%')), "probable")
+                                    .when((col('description').like('%rain%')), "probable")
+                                    .otherwise("aucun")) \
+                        .withColumn("risque_chaleur", when((col('temperature') >= 27) & (col('temperature') < 32), "modéré")
+                                    .when((col('temperature') >= 33) & (col('temperature') < 39), "élevé")
+                                    .when((col('temperature') >= 40), "extrême") \
+                                    .otherwise("aucun")) \
+                        .withColumn("risque_gel", when((col('temperature') <= 0) & (col('temperature') > -2), "léger")
+                                    .when((col('temperature') <= -2) & (col('temperature') > -5), "modéré")
+                                    .when((col('temperature') <= -5), "sévère")
+                                    .otherwise("aucun")) \
+                        .withColumn("risque_rafale", when((col('vent') >= 30) & (col('vent') < 50 ), "modéré")
+                                    .when((col('vent') >= 50) & (col('vent') < 80), "fort")
+                                    .when((col('vent') >= 80), "très fort")
+                                    .otherwise("aucun")) \
+                        .withColumn("risque_humidite", when((col('humidite') < 40), "bas")
+                                    .when((col('humidite') >= 40) & (col('humidite') < 70), "modéré")
+                                    .otherwise("élevé")) \
+                        .groupBy("location") \
+                        .agg(
+                            F.max("timestamp").alias("timestamp"),
+                            F.max("risque_pluie").alias("risque_pluie"),
+                            F.max("risque_chaleur").alias("risque_chaleur"),
+                            F.max("risque_gel").alias("risque_gel"),
+                            F.max("risque_rafale").alias("risque_rafale"),
+                            F.max("risque_humidite").alias("risque_humidite")
+                        )\
 
+    query = result \
+        .writeStream\
+        .outputMode('complete')\
+        .format('console')\
+        .queryName("result_table") \
+        .trigger(processingTime="1 second")\
+        .foreach(lambda row: send(row.asDict()))\
+        .start()
+    
+    query.awaitTermination()
