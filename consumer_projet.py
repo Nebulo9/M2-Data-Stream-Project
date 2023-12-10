@@ -1,41 +1,41 @@
-import sys
+import re, sys, os, tkinter as tk
 from pyspark.sql import SparkSession, DataFrame
 import pyspark.sql.functions as F
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType, FloatType, TimestampType
 from pyspark.sql.functions import col, when
-import os
-from notif import send_notification
 
 
 os.environ['PYSPARK_SUBMIT_ARGS'] = '--packages org.apache.spark:spark-streaming-kafka-0-10_2.12:3.5.0,org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 pyspark-shell'
 
-def send(row:dict[str,str]):
-    lieu = row['loaction']
-    risques = {k.strip("risque_"):v for k,v in row.items() if k != 'location'}
+def send_notification(row:dict[str,str]):
+    lieu = row['location']
+    timestamp = row['timestamp']
+    risques = {re.sub("risque\_","",k):v for k,v in row.items() if k not in ["location","timestamp"]}
     for nature,risque in risques.items():
         if any(r in risque for r in ["aucun","bas"]):
             continue
         else:
-            send_notification(f"Risque de {nature} à {lieu}", f"Risque {risque} de {nature} à {lieu}",threaded=True)
+            root = tk.Tk()
+            root.title("Risque de "+nature)
+            message = f"{timestamp}\nRisque {risque} de {nature} à\n{lieu}"
+            label = tk.Label(root, text=message,padx=50,pady=50,font=("Arial", 26))
+            label.pack()
+            seconds = 10
+            root.after(seconds*1000,root.destroy())
+            root.mainloop()
 
 if __name__ == "__main__":
-    if len(sys.argv) != 4:
-        print("""
-        Usage: structured_kafka_wordcount.py <bootstrap-servers> <subscribe-type> <topics>
-        """, file=sys.stderr)
-        sys.exit(-1)
 
-    bootstrapServers = sys.argv[1]
-    #subscribeType should be "subscribe" in this exercise.
-    subscribeType = sys.argv[2]
-    topics = sys.argv[3]
+    bootstrapServers = "proud-termite-7506-eu2-kafka.upstash.io:9092"
+    subscribeType = "subscribe"
+    topics = "projet_1"
     
     spark = SparkSession\
         .builder\
         .appName("StructuredKafkaWordCount")\
         .getOrCreate()
         
-    # Create DataSet representing the stream of input lines from kafka
+    
     lines = spark\
         .readStream\
         .format("kafka")\
@@ -61,7 +61,9 @@ if __name__ == "__main__":
         StructField("vent", FloatType(), True),
         StructField("description", StringType(), True),
         StructField("qualite_air", FloatType(), True),
-        StructField("timestamp", TimestampType(), True),
+        StructField("timestamp", StringType(), True),
+        StructField("pluie_3h", FloatType(), True),
+        StructField("pluie_1h", FloatType(), True),
     ])
 
     stream_data:DataFrame = lines.select(
@@ -124,8 +126,8 @@ if __name__ == "__main__":
         .outputMode('complete')\
         .format('console')\
         .queryName("result_table") \
-        .trigger(processingTime="1 second")\
-        .foreach(lambda row: send(row.asDict()))\
+        .trigger(processingTime="5 second")\
+        .foreach(lambda row: send_notification(row.asDict()))\
         .start()
     
     query.awaitTermination()
