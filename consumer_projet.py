@@ -3,20 +3,28 @@ from pyspark.sql import SparkSession, DataFrame
 import pyspark.sql.functions as F
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType, FloatType, TimestampType
 from pyspark.sql.functions import col, when
-import os
-from notif import send_notification
-
+import os, re
+import tkinter as tk
 
 os.environ['PYSPARK_SUBMIT_ARGS'] = '--packages org.apache.spark:spark-streaming-kafka-0-10_2.12:3.5.0,org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 pyspark-shell'
 
-def send(row:dict[str,str]):
-    lieu = row['loaction']
-    risques = {k.strip("risque_"):v for k,v in row.items() if k != 'location'}
+def send_notification(row:dict[str,str]):
+    lieu = row['location']
+    timestamp = row['timestamp']
+    risques = {re.sub("risque\_","",k):v for k,v in row.items() if k not in ["location","timestamp"]}
     for nature,risque in risques.items():
         if any(r in risque for r in ["aucun","bas"]):
             continue
         else:
-            send_notification(f"Risque de {nature} à {lieu}", f"Risque {risque} de {nature} à {lieu}",threaded=True)
+            root = tk.Tk()
+            root.title("Risque de "+nature)
+            message = f"{timestamp}\nRisque {risque} de {nature} à\n{lieu}"
+            label = tk.Label(root, text=message,padx=50,pady=50)
+            label.pack()
+            seconds = 10
+            root.after(seconds*1000, lambda: root.destroy())
+            root.mainloop()
+    
 
 if __name__ == "__main__":
     if len(sys.argv) != 4:
@@ -125,7 +133,7 @@ if __name__ == "__main__":
         .format('console')\
         .queryName("result_table") \
         .trigger(processingTime="1 second")\
-        .foreach(lambda row: send(row.asDict()))\
+        .foreach(lambda row: send_notification(row.asDict()))\
         .start()
     
     query.awaitTermination()

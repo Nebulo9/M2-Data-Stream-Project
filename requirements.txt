@@ -8,9 +8,9 @@ html5lib
 icalendar
 idna
 kafka-python
-mkl-fft
-mkl-random
-mkl-service
+# mkl-fft
+# mkl-random
+# mkl-service
 numexpr
 numpy
 pandas
@@ -27,5 +27,5 @@ types-python-dateutil
 tzdata
 urllib3
 webencodings
-win10toast
-pypiwin32
+# win10toast
+# pypiwin32
