@@ -23,7 +23,7 @@ def send(row:dict[str,str]):
             continue
         else:
             nat = nature.strip("risque_")
-            send_notification(f"Risque de {nature} à {lieu}", f"Risque {risque} de {nature} à {lieu}",threaded=True)
+            send_notification(f"Risque de {nat} à {lieu}", f"Risque {risque} de {nat} à {lieu}",threaded=True)
 
 if __name__ == "__main__":
     if len(sys.argv) != 4:
